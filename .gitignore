@@ -1,0 +1,11 @@
+# Directorios generados por IDEs
+.idea/
+
+# Archivos de configuración locales
+local.properties
+
+# Directorio de compilación
+build/
+
+# Directorio de Gradle
+.gradle/
