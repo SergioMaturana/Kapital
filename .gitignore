@@ -1,11 +1,44 @@
-# Directorios generados por IDEs
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de Android Studio
 .idea/
-
-# Archivos de configuración locales
-local.properties
-
-# Directorio de compilación
-build/
-
-# Directorio de Gradle
+*.iml
 .gradle/
+local.properties
+.cache/
+captures/
+
+# Archivos de compilación
+/build/
+**/build/
+
+# Archivos de entorno
+.env
+
+# Archivos de Gradle
+.gradle/
+build/
+!gradle-wrapper.jar
+
+# Otros
+*.log
+*.keystore
+*.jks
+
+# Archivos de sistema operativo
+*.swp
+*.lock
+
+# Archivos del NDK
+.cxx/
+
+# Carpeta de reportes
+**/reports/
+
+# Archivos generados
+generated/
+
+# Archivos de test
+*.ec
