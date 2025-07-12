@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Kapital" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- El tema real se define en Theme.kt para Compose -->
+    </style>
+</resources>
