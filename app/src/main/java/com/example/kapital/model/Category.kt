@@ -25,12 +25,12 @@ enum class Category(
     SERVICES("Servicios", false, Color(0xFF2ECC71), R.drawable.ic_services),//,    // Verde esmeralda
     CLOTHING("Ropa y calzado", false, Color(0xFFE67E22), R.drawable.ic_clothing), // Naranja oscuro
     HEALTH("Salud", false, Color(0xFFE74C3C), R.drawable.ic_health),           // Rojo claro
-    EDUCATION("Educación", false, Color(0xFF3498DB), R.drawable.ic_education);  // Azul cielo
-//    LEISURE("Ocio", false, Color.Blue, R.drawable.ic_entertainment),
-//    SAVINGS("Ahorro e inversión", false, Color(0xFF55EFc4), R.drawable.ic_savings), // Verde menta
-//    PETS("Mascotas", false, Color(0xFFF1C40F), R.drawable.ic_pets),             // Amarillo
-//    GIFTS("Regalos", false, Color(0xFFFD79A8), R.drawable.ic_gifts),            // Rosa pastel
-//    OTHER_EXPENSE("Otro (Gasto)", false, Color.Gray, R.drawable.ic_other_expense);
+    EDUCATION("Educación", false, Color(0xFF3498DB), R.drawable.ic_education),  // Azul cielo
+    LEISURE("Ocio", false, Color.Blue, R.drawable.ic_entertainment),
+    SAVINGS("Ahorro e inversión", false, Color(0xFF55EFc4), R.drawable.ic_savings), // Verde menta
+    PETS("Mascotas", false, Color(0xFFF1C40F), R.drawable.ic_pets),             // Amarillo
+    GIFTS("Regalos", false, Color(0xFFFD79A8), R.drawable.ic_gifts),            // Rosa pastel
+    OTHER_EXPENSE("Otro (Gasto)", false, Color.Gray, R.drawable.ic_other_expense);
 
     companion object {
         fun getIncomeCategories(): List<Category> = values().filter { it.isIncomeCategory }

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.example.kapital.model.Category
 import com.example.kapital.model.Transaction
 import com.example.kapital.viewmodel.MainViewModel
@@ -59,7 +60,6 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
     var futureDateError by remember { mutableStateOf(false) }
     var newDate by remember { mutableStateOf("") }
     var showDatePickerDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
 
     // Formateador de fechas
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
@@ -87,6 +87,43 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
     var showExpenseDialog by remember { mutableStateOf(false) }
     var showFullFormDialog by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    // Componente para seleccionar fecha
+    if (showDatePickerDialog) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePickerDialog = false },
+            confirmButton = {
+                Button(onClick = {
+                    // Actualizar la fecha seleccionada y cerrar el diálogo
+                    newDate = dateFormat.format(selectedDate.time)
+                    showDatePickerDialog = false
+                }) {
+                    Text("Aceptar")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDatePickerDialog = false }) {
+                    Text("Cancelar")
+                }
+            },
+            content = {
+                AndroidView(factory = { ctx ->
+                    android.widget.DatePicker(ctx).apply {
+                        // Configurar fecha mínima (opcional)
+                        // minDate = System.currentTimeMillis() - 1000
+                        updateDate(selectedDate.get(Calendar.YEAR),
+                            selectedDate.get(Calendar.MONTH),
+                            selectedDate.get(Calendar.DAY_OF_MONTH))
+                        init(selectedDate.get(Calendar.YEAR),
+                            selectedDate.get(Calendar.MONTH),
+                            selectedDate.get(Calendar.DAY_OF_MONTH)) { _, year, month, day ->
+                            selectedDate.set(year, month, day)
+                        }
+                    }
+                })
+            }
+        )
+    }
 
     Spacer(modifier = Modifier.height(8.dp))
 
@@ -323,6 +360,7 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                             val calendar = Calendar.getInstance()
                             selectedDate = calendar
                             newDate = formatDate(calendar.time)
+                            showIncomes = isIncome
 
                             showFullFormDialog = false
                         }
@@ -429,8 +467,9 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                         onEditTransaction = { transaction ->
                             editedTransaction = transaction
                             editTitle = transaction.title
-                            editAmount = formatCurrency(transaction.amount)
+                            editAmount = transaction.amount.toString()
                             editDate = transaction.date
+                            selectedDate = Calendar.getInstance().apply { time = transaction.date }
                             showEditDialog = true
                         }
                     )
@@ -445,9 +484,9 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             // Campo: Descripción
                             OutlinedTextField(
-                                value = title,
+                                value = editTitle,
                                 onValueChange = {
-                                    title = it
+                                    editTitle = it
                                     if (it.isNotBlank()) titleError = false
                                 },
                                 label = { Text("Descripción") },
@@ -465,16 +504,17 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
 
                             // Campo: Cantidad
                             OutlinedTextField(
-                                value = amount,
+                                value = editAmount,
                                 onValueChange = { newValue ->
                                     val processedValue = newValue.replace(',', '.')
                                     if (processedValue.isEmpty() ||
                                         (processedValue.matches(Regex("^\\d*\\.?\\d*\$")) && processedValue.count { it == '.' } <= 1)) {
-                                        amount = processedValue
+                                        editAmount = processedValue
                                         if (processedValue.toDoubleOrNull() ?: 0.0 > 0) amountError = false
                                     }
                                 },
                                 label = { Text("Cantidad") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 isError = amountError,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -496,16 +536,17 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                                         val parsedDate = dateFormat.parse(input)
                                         editDate = parsedDate
                                     } catch (e: Exception) {
-                                        editDate = null  // Marca fecha como inválida
+                                        editDate = null
                                     }
                                 },
                                 label = { Text("Fecha (dd/MM/yyyy)") },
                                 modifier = Modifier.fillMaxWidth(),
-                                isError = editDate == null, // Muestra error si la fecha es inválida
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = if (editDate == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = if (editDate == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
-                                )
+                                isError = editDate == null,
+                                trailingIcon = {
+                                    IconButton(onClick = { showDatePickerDialog = true }) {
+                                        Icon(Icons.Default.CalendarToday, contentDescription = "Seleccionar fecha")
+                                    }
+                                }
                             )
 
                             // Mensaje de error opcional
@@ -523,12 +564,13 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                         Button(
                             onClick = {
                                 val transaction = editedTransaction
-                                if (transaction != null && editDate != null && editTitle.isNotBlank()) {
+                                if (transaction != null) {
+                                    val newAmount = editAmount.toDoubleOrNull() ?: transaction.amount
                                     viewModel.updateTransaction(
                                         transaction.copy(
                                             title = editTitle.trim(),
-                                            amount = editAmount.toDoubleOrNull() ?: transaction.amount,
-                                            date = editDate!!
+                                            amount = newAmount,
+                                            date = selectedDate.time // Usa selectedDate
                                         )
                                     )
                                 }
@@ -587,6 +629,7 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
         }
 
     }
+
 }
 
 private fun formatDate(date: Date): String {
@@ -748,51 +791,6 @@ fun TransactionDetailItem(transaction: Transaction,onDelete: () -> Unit,onEdit: 
         )
     }
 }
-
-// Componente para mostrar el resumen de una categoría
-@Composable
-fun CategorySummaryItem(category: Category, totalAmount: Double) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(8.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .background(color = category.color)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        category.displayName,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        "${if (totalAmount >= 0) "+" else "-"}${formatCurrency(totalAmount)} €",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        }
-    }
-}
-
 @Composable
 fun TransactionItem(
     transaction: Transaction,
@@ -850,6 +848,51 @@ fun TransactionItem(
                     contentDescription = "Eliminar",
                     tint = MaterialTheme.colorScheme.onSurface
                 )
+            }
+        }
+    }
+}
+
+
+// Componente para mostrar el resumen de una categoría
+@Composable
+fun CategorySummaryItem(category: Category, totalAmount: Double) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .background(color = category.color)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        category.displayName,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "${if (totalAmount >= 0) "+" else "-"}${formatCurrency(totalAmount)} €",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
         }
     }
