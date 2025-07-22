@@ -177,6 +177,7 @@ fun AllAccountsTransactions(
                     data = groupedTransactionsForChart.map { (category, totalAmount) ->
                         category to totalAmount
                     },
+                    categories = Category.values().toList(), // Pasamos todas las categorías
                     onSegmentClick = { categoryName, amount ->
                         val category = Category.values().find { it.name == categoryName }
                         if (category != null) {
@@ -259,7 +260,8 @@ fun AllAccountsTransactions(
 @Composable
 fun PieChartView(
     data: List<Pair<String, Double>>,
-    onSegmentClick: (String, Double) -> Unit, // Callback para manejar clics
+    categories: List<Category>, // Agregamos las categorías para obtener sus colores
+    onSegmentClick: (String, Double) -> Unit,
     modifier: Modifier = Modifier
 ) {
     AndroidView(
@@ -272,7 +274,6 @@ fun PieChartView(
                 legend.isEnabled = false // Desactivar leyenda
                 animateY(1000)
                 setDrawEntryLabels(false) // Desactivar etiquetas de texto dentro del gráfico
-
                 setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
                     override fun onValueSelected(e: Entry?, h: Highlight?) {
                         if (e is PieEntry) {
@@ -281,7 +282,6 @@ fun PieChartView(
                             onSegmentClick(category, amount) // Llamar al callback
                         }
                     }
-
                     override fun onNothingSelected() {
                         // No hacer nada si no se selecciona nada
                     }
@@ -289,15 +289,22 @@ fun PieChartView(
             }
         },
         update = { chart ->
-            val entries = data.map { (category, amount) ->
-                PieEntry(amount.toFloat(), category)
+            val entries = data.map { (categoryName, amount) ->
+                PieEntry(amount.toFloat(), categoryName)
             }
+
+            // Obtener los colores de las categorías correspondientes
+            val colors = data.mapNotNull { (categoryName, _) ->
+                categories.find { it.name == categoryName }?.color?.toArgb()
+            }
+
             val dataSet = PieDataSet(entries, "").apply {
-                colors = ColorTemplate.MATERIAL_COLORS.toList()
+                this.colors = colors // Asignar los colores correctos
                 valueTextSize = 0f // Ocultar cantidades
                 sliceSpace = 3f
                 selectionShift = 5f
             }
+
             val pieData = PieData(dataSet)
             chart.data = pieData
             chart.invalidate()
