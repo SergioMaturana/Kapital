@@ -34,7 +34,6 @@ import com.example.kapital.ui.screens.DropdownMenuCategory
 import com.example.kapital.ui.screens.formatCurrency
 import java.util.Calendar
 
-
 enum class TimeFilter(val displayName: String) {
     Dia("Hoy"),
     Semana("Semana"),
@@ -94,8 +93,7 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
             onDismissRequest = { showDatePickerDialog = false },
             confirmButton = {
                 Button(onClick = {
-                    // Actualizar la fecha seleccionada y cerrar el diálogo
-                    newDate = dateFormat.format(selectedDate.time)
+                    editDate = selectedDate.time // Actualiza editDate
                     showDatePickerDialog = false
                 }) {
                     Text("Aceptar")
@@ -109,14 +107,16 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
             content = {
                 AndroidView(factory = { ctx ->
                     android.widget.DatePicker(ctx).apply {
-                        // Configurar fecha mínima (opcional)
-                        // minDate = System.currentTimeMillis() - 1000
-                        updateDate(selectedDate.get(Calendar.YEAR),
+                        updateDate(
+                            selectedDate.get(Calendar.YEAR),
                             selectedDate.get(Calendar.MONTH),
-                            selectedDate.get(Calendar.DAY_OF_MONTH))
-                        init(selectedDate.get(Calendar.YEAR),
+                            selectedDate.get(Calendar.DAY_OF_MONTH)
+                        )
+                        init(
+                            selectedDate.get(Calendar.YEAR),
                             selectedDate.get(Calendar.MONTH),
-                            selectedDate.get(Calendar.DAY_OF_MONTH)) { _, year, month, day ->
+                            selectedDate.get(Calendar.DAY_OF_MONTH)
+                        ) { _, year, month, day ->
                             selectedDate.set(year, month, day)
                         }
                     }
@@ -157,6 +157,7 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                 ),
                 maxLines = 1
             )
+
         }
 
         Button(
@@ -450,7 +451,7 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                 color = MaterialTheme.colorScheme.onSurface, // FIX: Color de texto
                 modifier = Modifier.padding(vertical = 8.dp)
             )
-            LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(groupedTransactions) { (category, totalAmount) ->
                     ExpandableCategoryItem(
                         category = category,
@@ -506,12 +507,14 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                             OutlinedTextField(
                                 value = editAmount,
                                 onValueChange = { newValue ->
-                                    val processedValue = newValue.replace(',', '.')
-                                    if (processedValue.isEmpty() ||
-                                        (processedValue.matches(Regex("^\\d*\\.?\\d*\$")) && processedValue.count { it == '.' } <= 1)) {
-                                        editAmount = processedValue
-                                        if (processedValue.toDoubleOrNull() ?: 0.0 > 0) amountError = false
+                                    val processedValue = newValue.replace(',', '.') // Reemplaza comas por puntos
+                                    if (
+                                        processedValue.isEmpty() ||
+                                        (processedValue.matches(Regex("^\\d*\\.?\\d*\$")) && processedValue.count { it == '.' } <= 1)
+                                    ) {
+                                        editAmount = processedValue // Actualiza el estado solo si es válido
                                     }
+                                    amountError = processedValue.toDoubleOrNull() ?: 0.0 <= 0 // Actualiza el error
                                 },
                                 label = { Text("Cantidad") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -532,30 +535,42 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                                 value = editDate?.let { formatDate(it) } ?: "",
                                 onValueChange = { input ->
                                     try {
-                                        val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
                                         val parsedDate = dateFormat.parse(input)
-                                        editDate = parsedDate
-                                    } catch (e: Exception) {
+                                        if (parsedDate != null) {
+                                            editDate = parsedDate
+                                            selectedDate.time = parsedDate // Sincroniza selectedDate
+                                            dateError = false
+                                            futureDateError = parsedDate.after(Date())
+                                        }
+                                    } catch (_: Exception) {
                                         editDate = null
+                                        dateError = true
                                     }
                                 },
                                 label = { Text("Fecha (dd/MM/yyyy)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                isError = editDate == null,
                                 trailingIcon = {
                                     IconButton(onClick = { showDatePickerDialog = true }) {
                                         Icon(Icons.Default.CalendarToday, contentDescription = "Seleccionar fecha")
                                     }
-                                }
+                                },
+                                isError = dateError || futureDateError,
+                                modifier = Modifier.fillMaxWidth()
                             )
 
-                            // Mensaje de error opcional
-                            if (editDate == null) {
+                            if (dateError) {
                                 Text(
-                                    text = "Fecha inválida. Use el formato dd/MM/yyyy",
+                                    text = "Fecha inválida",
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.align(Alignment.End)
+                                    modifier = Modifier.padding(start = 16.dp)
+                                )
+                            }
+                            if (futureDateError) {
+                                Text(
+                                    text = "No se permiten fechas futuras",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(start = 16.dp)
                                 )
                             }
                         }
@@ -565,16 +580,22 @@ fun TransactionsList(accountId: Int, viewModel: MainViewModel, onBack: () -> Uni
                             onClick = {
                                 val transaction = editedTransaction
                                 if (transaction != null) {
-                                    val newAmount = editAmount.toDoubleOrNull() ?: transaction.amount
-                                    viewModel.updateTransaction(
-                                        transaction.copy(
-                                            title = editTitle.trim(),
-                                            amount = newAmount,
-                                            date = selectedDate.time // Usa selectedDate
+                                    // Validar título
+                                    titleError = editTitle.isBlank()
+                                    // Validar cantidad
+                                    amountError = editAmount.toDoubleOrNull() ?: 0.0 <= 0
+                                    if (!titleError && !amountError) {
+                                        val newAmount = editAmount.toDoubleOrNull() ?: transaction.amount
+                                        viewModel.updateTransaction(
+                                            transaction.copy(
+                                                title = editTitle.trim(),
+                                                amount = newAmount,
+                                                date = editDate ?: transaction.date // Usa editDate si no es nulo
+                                            )
                                         )
-                                    )
+                                        showEditDialog = false
+                                    }
                                 }
-                                showEditDialog = false
                             }
                         ) {
                             Text("Guardar")

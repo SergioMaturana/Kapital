@@ -69,4 +69,6 @@ dependencies {
     implementation("com.google.code.gson:gson:2.8.8")
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.30.1")
 
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+
 }

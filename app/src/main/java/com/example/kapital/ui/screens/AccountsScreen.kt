@@ -1,5 +1,7 @@
 package com.example.kapital.ui.screens
 
+import AllAccountsTransactions
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -7,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Balance
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
@@ -48,6 +51,8 @@ fun AccountsScreen(
     }
     var selectedAccountId by remember { mutableStateOf<Int?>(null) }
 
+    var showCalculator by remember { mutableStateOf(false) }
+
     // Recargar nombre cuando cambie la cuenta seleccionada
     LaunchedEffect(selectedAccountId) {
         selectedAccountId?.let {
@@ -77,6 +82,11 @@ fun AccountsScreen(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(start = 8.dp) // Espacio opcional entre ícono y texto
                     )
+
+                }
+
+                if (showCalculator) {
+                    CalculatorDialog(onDismiss = { showCalculator = false })
                 }
 
                 // Mostrar el balance total centrado
@@ -84,27 +94,42 @@ fun AccountsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = { isBalanceVisible = !isBalanceVisible },
-                        modifier = Modifier.size(20.dp)
+                    // Contenedor centrado para el ojo y el balance
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(
-                            imageVector = if (isBalanceVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (isBalanceVisible) "Ocultar balance" else "Mostrar balance",
-                            tint = MaterialTheme.colorScheme.primary
+                        IconButton(
+                            onClick = { isBalanceVisible = !isBalanceVisible },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isBalanceVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (isBalanceVisible) "Ocultar balance" else "Mostrar balance",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Text(
+                            text = " ${if (isBalanceVisible) formatCurrency(totalBalance) else "*****"}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(start = 8.dp)
                         )
                     }
 
-                    Text(
-                        text = " ${if (isBalanceVisible) formatCurrency(totalBalance) else "*****"}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier
-                            .padding(start = 8.dp) // Espaciado entre ícono y texto
-                    )
+                    // Botón de calculadora a la derecha
+                    IconButton(
+                        onClick = { showCalculator = true },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Calculate,
+                            contentDescription = "Calculadora",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
             // Item: Botón para transacciones globales
@@ -303,4 +328,140 @@ fun AccountItem(
 fun formatCurrency(amount: Double): String {
     val formatter = DecimalFormat("###,###,##0.00")
     return "${formatter.format(amount)} €"
+}
+
+@Composable
+fun CalculatorDialog(onDismiss: () -> Unit) {
+    val decimalFormat = DecimalFormat("###,###,##0.00", DecimalFormatSymbols(Locale.getDefault()))
+    var display by remember { mutableStateOf("0") }
+    var firstNumber by remember { mutableStateOf(0.0) }
+    var operator by remember { mutableStateOf<Char?>(null) }
+    var isNewInput by remember { mutableStateOf(true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Calculadora") },
+        text = {
+            Column {
+                // Pantalla de resultados
+                Text(
+                    text = display,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                        .background(MaterialTheme.colorScheme.surface),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.headlineSmall
+                )
+
+                // Botones de la calculadora
+                CalculatorButtonGrid(
+                    onDigitClick = { digit ->
+                        if (isNewInput) {
+                            display = digit
+                            isNewInput = false
+                        } else {
+                            display += digit
+                        }
+                    },
+                    onOperatorClick = { op ->
+                        firstNumber = display.toDoubleOrNull() ?: 0.0
+                        operator = op
+                        isNewInput = true
+                    },
+                    onEqualsClick = {
+                        val secondNumber = display.toDoubleOrNull() ?: 0.0
+                        val result = when (operator) {
+                            '+' -> firstNumber + secondNumber
+                            '-' -> firstNumber - secondNumber
+                            '×' -> firstNumber * secondNumber
+                            '÷' -> if (secondNumber != 0.0) firstNumber / secondNumber else Double.NaN
+                            else -> secondNumber
+                        }
+                        display = if (result.isNaN()) "Error" else decimalFormat.format(result)
+                        operator = null
+                        isNewInput = true
+                    },
+                    onClearClick = {
+                        display = "0"
+                        firstNumber = 0.0
+                        operator = null
+                        isNewInput = true
+                    }
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
+            }
+        }
+    )
+}
+
+@Composable
+fun CalculatorButtonGrid(
+    onDigitClick: (String) -> Unit,
+    onOperatorClick: (Char) -> Unit,
+    onEqualsClick: () -> Unit,
+    onClearClick: () -> Unit
+) {
+    val rows = listOf(
+        listOf("7", "8", "9", "÷"),
+        listOf("4", "5", "6", "×"),
+        listOf("1", "2", "3", "-"),
+        listOf("0", ".", "=", "+"),
+        listOf("C")
+    )
+
+    Column {
+        for (row in rows) {
+            Row {
+                for (button in row) {
+                    val isOperator = button in listOf("÷", "×", "-", "+", "=")
+                    val isSpecial = button == "C"
+
+                    CalculatorButton(
+                        text = button,
+                        onClick = when {
+                            isSpecial -> onClearClick
+                            button == "=" -> onEqualsClick
+                            isOperator -> { { onOperatorClick(button.first()) } }
+                            else -> { { onDigitClick(button) } }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(4.dp),
+                        colors = if (isOperator) ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ) else if (isSpecial) ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary
+                        ) else ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CalculatorButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    colors: ButtonColors
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(60.dp),
+        colors = colors
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium
+        )
+    }
 }

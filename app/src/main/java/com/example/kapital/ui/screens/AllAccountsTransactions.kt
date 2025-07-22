@@ -1,6 +1,3 @@
-package com.example.kapital.ui.screens
-
-import ExpandableCategoryItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,13 +13,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.example.kapital.model.Category
 import com.example.kapital.model.Transaction
+import com.example.kapital.ui.screens.formatCurrency
 import com.example.kapital.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.*
+import android.graphics.Color
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.toArgb
+import com.github.mikephil.charting.charts.PieChart
+import com.github.mikephil.charting.data.PieData
+import com.github.mikephil.charting.data.PieDataSet
+import com.github.mikephil.charting.data.PieEntry
+import com.github.mikephil.charting.highlight.Highlight
+import kotlin.math.absoluteValue
+import com.github.mikephil.charting.listener.OnChartValueSelectedListener
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.utils.ColorTemplate
 
 @Composable
 fun AllAccountsTransactions(
@@ -30,10 +39,10 @@ fun AllAccountsTransactions(
     onBack: () -> Unit
 ) {
     val accounts = viewModel.accounts.collectAsState().value
-    var showIncomes by remember { mutableStateOf(true) }
     var timeFilter by remember { mutableStateOf(TimeFilter.ALL) }
     var expandedCategory: Category? by remember { mutableStateOf(null) }
     var isBalanceVisible by remember { mutableStateOf(true) }
+    var selectedCategoryInfo by remember { mutableStateOf<Pair<Category, Double>?>(null) }
 
     // Calcular el balance total de todas las cuentas
     val totalBalance = accounts.sumOf { account ->
@@ -45,14 +54,9 @@ fun AllAccountsTransactions(
         accounts.flatMap { account -> account.transactions }
     }
 
-    // Filtrar por tipo y rango de fecha
-    val filteredTransactions = remember(allTransactions, showIncomes, timeFilter) {
-        val filtered = if (showIncomes) {
-            allTransactions.filter { it.isIncome }
-        } else {
-            allTransactions.filter { !it.isIncome }
-        }
-        filtered.filter { transaction ->
+    // Filtrar solo por rango de fecha
+    val filteredTransactions = remember(allTransactions, timeFilter) {
+        allTransactions.filter { transaction ->
             when (timeFilter) {
                 TimeFilter.Dia -> isSameDay(transaction.date, Date())
                 TimeFilter.Semana -> isSameWeek(transaction.date, Date())
@@ -63,29 +67,23 @@ fun AllAccountsTransactions(
         }
     }
 
-    // Agrupar por categoría y sumar montos
-    val groupedTransactions = remember(filteredTransactions) {
+    // Agrupar transacciones por categoría y calcular montos totales para el gráfico
+    val groupedTransactionsForChart = remember(filteredTransactions) {
         filteredTransactions
             .groupBy { it.category }
             .map { (category, transactions) ->
-                Pair(category, transactions.sumOf { it.amount })
+                Triple(
+                    category.name,
+                    transactions.sumOf { it.amount.absoluteValue }, // Monto absoluto para el gráfico
+                    category.color // Incluir el color de la categoría
+                )
             }
+            .sortedByDescending { it.second } // Ordenar por monto total descendente
     }
 
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
-    var selectedTransactionToDelete: Transaction? by remember { mutableStateOf(null) }
 
-    var showEditDialog by remember { mutableStateOf(false) }
-    var editedTransaction by remember { mutableStateOf<Transaction?>(null) }
 
-    // Campos editables
-    var editTitle by remember { mutableStateOf("") }
-    var editAmount by remember { mutableStateOf("") }
-    var editDate by remember { mutableStateOf(Date()) }
-
-    // Usamos LazyColumn para scroll vertical global
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-
         item {
             // Barra superior personalizada
             Row(
@@ -109,7 +107,6 @@ fun AllAccountsTransactions(
                     )
                 )
             }
-
             // Mostrar el balance total centrado
             Row(
                 modifier = Modifier
@@ -128,7 +125,6 @@ fun AllAccountsTransactions(
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
-
                 Text(
                     text = " ${if (isBalanceVisible) formatCurrency(totalBalance) else "*****"}",
                     style = MaterialTheme.typography.titleMedium,
@@ -139,7 +135,6 @@ fun AllAccountsTransactions(
                 )
             }
         }
-
         item {
             // Contenido principal con padding ajustado
             Column(
@@ -147,33 +142,6 @@ fun AllAccountsTransactions(
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                // Filtros de tipo (ingreso/gasto)
-                Row(
-                    horizontalArrangement = Arrangement.SpaceAround,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Button(
-                        onClick = { showIncomes = true },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (showIncomes) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (showIncomes) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    ) {
-                        Text("Mostrar Ingresos")
-                    }
-                    Button(
-                        onClick = { showIncomes = false },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (!showIncomes) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (!showIncomes) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    ) {
-                        Text("Mostrar Gastos")
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
                 // Filtros de tiempo
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -192,47 +160,72 @@ fun AllAccountsTransactions(
                         }
                     }
                 }
-
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
-
-        if (groupedTransactions.isNotEmpty()) {
+        if (groupedTransactionsForChart.isNotEmpty()) {
             item {
                 Text(
-                    text = if (showIncomes) "Resumen Global de Ingresos" else "Resumen Global de Gastos",
+                    text = "Resumen Global de Transacciones",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(vertical = 8.dp),
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-
-            items(groupedTransactions) { (category, totalAmount) ->
-                ExpandableCategoryItem(
-                    category = category,
-                    totalAmount = totalAmount,
-                    transactions = filteredTransactions.filter { it.category == category },
-                    isExpanded = expandedCategory == category,
-                    onExpand = {
-                        expandedCategory = if (expandedCategory == category) null else category
+            item {
+                PieChartView(
+                    data = groupedTransactionsForChart.map { (category, totalAmount) ->
+                        category to totalAmount
                     },
-                    onDeleteTransaction = { transaction ->
-                        showDeleteConfirmation = true
-                        selectedTransactionToDelete = transaction
+                    onSegmentClick = { categoryName, amount ->
+                        val category = Category.values().find { it.name == categoryName }
+                        if (category != null) {
+                            selectedCategoryInfo = Pair(category, amount)
+                        }
                     },
-                    onEditTransaction = { transaction ->
-                        editedTransaction = transaction
-                        editTitle = transaction.title
-                        editAmount = formatCurrency(transaction.amount)
-                        editDate = transaction.date
-                        showEditDialog = true
-                    }
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
+
+            // Nueva sección para mostrar la lista de transacciones
+            if (filteredTransactions.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Lista de Transacciones",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(vertical = 16.dp, horizontal = 16.dp)
+                    )
+                }
+                items(filteredTransactions) { transaction ->
+                    TransactionItem(
+                        transaction = transaction,
+                        viewModel = viewModel,
+                        onDelete = {
+                            // Lógica para eliminar la transacción
+                            viewModel.deleteTransaction(transaction.id)
+                        }
+                    )
+                }
+
+            } else {
+                item {
+                    Text(
+                        text = "No hay transacciones registradas.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 16.dp, horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
         } else {
             item {
                 Text(
-                    text = if (showIncomes) "No hay ingresos globales registrados." else "No hay gastos globales registrados.",
+                    text = "No hay transacciones globales registradas.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(vertical = 16.dp, horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -240,101 +233,77 @@ fun AllAccountsTransactions(
             }
         }
 
-        if (showDeleteConfirmation && selectedTransactionToDelete != null) {
-            item {
-                AlertDialog(
-                    onDismissRequest = { showDeleteConfirmation = false },
-                    title = { Text("Confirmar eliminación") },
-                    text = { Text("¿Estás seguro de eliminar esta transacción?") },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                val transaction = selectedTransactionToDelete
-                                if (transaction != null) {
-                                    viewModel.deleteTransaction(transaction.id)
-                                    // Reinicia la variable después de eliminar
-                                    showDeleteConfirmation = false
-                                    selectedTransactionToDelete = null
-                                }
-                            }
-                        ) {
-                            Text("Sí, eliminar")
-                        }
-                    },
-                    dismissButton = {
-                        Button(
-                            onClick = { showDeleteConfirmation = false }
-                        ) {
-                            Text("Cancelar")
-                        }
-                    }
-                )
-            }
-        }
     }
-    if (showEditDialog && editedTransaction != null) {
+
+    // Mostrar el diálogo con la información del segmento seleccionado
+    if (selectedCategoryInfo != null) {
+        val (category, amount) = selectedCategoryInfo!!
         AlertDialog(
-            onDismissRequest = { showEditDialog = false },
-            title = { Text("Editar Transacción") },
+            onDismissRequest = { selectedCategoryInfo = null },
+            title = { Text("Detalles de la Categoría") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = editTitle,
-                        onValueChange = { editTitle = it },
-                        label = { Text("Descripción") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = editAmount,
-                        onValueChange = {
-                            if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*\$"))) {
-                                editAmount = it
-                            }
-                        },
-                        label = { Text("Cantidad") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = editDate?.let { formatDate(it) } ?: "",
-                        onValueChange = { input ->
-                            try {
-                                val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-                                editDate = dateFormat.parse(input)
-                            } catch (e: Exception) {
-                                // Ignorar entrada inválida
-                            }
-                        },
-                        label = { Text("Fecha (dd/MM/yyyy)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Text(text = "Categoría: ${category.displayName}") // Usar displayName
+                    Text(text = "Cantidad: ${formatCurrency(amount)}")
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val transaction = editedTransaction
-                        if (transaction != null && editDate != null) {
-                            viewModel.updateTransaction(
-                                transaction.copy(
-                                    title = editTitle.trim(),
-                                    amount = editAmount.toDoubleOrNull() ?: transaction.amount,
-                                    date = editDate!!
-                                )
-                            )
-                        }
-                        showEditDialog = false
-                    }
-                ) {
-                    Text("Guardar")
-                }
-            },
-            dismissButton = {
-                Button(onClick = { showEditDialog = false }) {
-                    Text("Cancelar")
+                Button(onClick = { selectedCategoryInfo = null }) {
+                    Text("Cerrar")
                 }
             }
         )
     }
+}
+
+@Composable
+fun PieChartView(
+    data: List<Pair<String, Double>>,
+    onSegmentClick: (String, Double) -> Unit, // Callback para manejar clics
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        factory = { context ->
+            PieChart(context).apply {
+                description.isEnabled = false
+                isDrawHoleEnabled = true
+                setEntryLabelColor(Color.BLACK)
+                setUsePercentValues(false) // Desactivar porcentajes
+                legend.isEnabled = false // Desactivar leyenda
+                animateY(1000)
+                setDrawEntryLabels(false) // Desactivar etiquetas de texto dentro del gráfico
+
+                setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+                    override fun onValueSelected(e: Entry?, h: Highlight?) {
+                        if (e is PieEntry) {
+                            val category = e.label
+                            val amount = e.value.toDouble()
+                            onSegmentClick(category, amount) // Llamar al callback
+                        }
+                    }
+
+                    override fun onNothingSelected() {
+                        // No hacer nada si no se selecciona nada
+                    }
+                })
+            }
+        },
+        update = { chart ->
+            val entries = data.map { (category, amount) ->
+                PieEntry(amount.toFloat(), category)
+            }
+            val dataSet = PieDataSet(entries, "").apply {
+                colors = ColorTemplate.MATERIAL_COLORS.toList()
+                valueTextSize = 0f // Ocultar cantidades
+                sliceSpace = 3f
+                selectionShift = 5f
+            }
+            val pieData = PieData(dataSet)
+            chart.data = pieData
+            chart.invalidate()
+        },
+        modifier = modifier
+    )
 }
 
 private fun isSameDay(date1: Date, date2: Date): Boolean {
