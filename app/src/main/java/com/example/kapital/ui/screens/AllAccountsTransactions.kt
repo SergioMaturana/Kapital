@@ -42,7 +42,7 @@ fun AllAccountsTransactions(
     var timeFilter by remember { mutableStateOf(TimeFilter.ALL) }
     var expandedCategory: Category? by remember { mutableStateOf(null) }
     var isBalanceVisible by remember { mutableStateOf(true) }
-    var selectedCategoryInfo by remember { mutableStateOf<Pair<Category, Double>?>(null) }
+    var selectedCategoryInfo by remember { mutableStateOf<Pair<Any?, Double>?>(null) }
 
     // Calcular el balance total de todas las cuentas
     val totalBalance = accounts.sumOf { account ->
@@ -81,7 +81,15 @@ fun AllAccountsTransactions(
             .sortedByDescending { it.second } // Ordenar por monto total descendente
     }
 
+    var chartType by remember { mutableStateOf(ChartType.CATEGORIES) }
 
+    val totalIncome = remember(filteredTransactions) {
+        filteredTransactions.filter { it.amount > 0 }.sumOf { it.amount }
+    }
+
+    val totalExpenses = remember(filteredTransactions) {
+        filteredTransactions.filter { it.amount < 0 }.sumOf { it.amount.absoluteValue }
+    }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
@@ -135,6 +143,7 @@ fun AllAccountsTransactions(
                 )
             }
         }
+
         item {
             // Contenido principal con padding ajustado
             Column(
@@ -161,27 +170,116 @@ fun AllAccountsTransactions(
                     }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
+
+                // Botones para cambiar el tipo de gráfico (NUEVO)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = { chartType = ChartType.CATEGORIES },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (chartType == ChartType.CATEGORIES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (chartType == ChartType.CATEGORIES) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Text("Por Categorías")
+                    }
+                    Button(
+                        onClick = { chartType = ChartType.INCOME_EXPENSES },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (chartType == ChartType.INCOME_EXPENSES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (chartType == ChartType.INCOME_EXPENSES) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Text("Ingresos vs Gastos")
+                    }
+                }
+
             }
         }
-        if (groupedTransactionsForChart.isNotEmpty()) {
+
+        if (chartType == ChartType.CATEGORIES && groupedTransactionsForChart.isNotEmpty()) {
+            val categoryData = groupedTransactionsForChart.map { Triple(it.first, it.second, it.third) }
+            val categories = Category.values().toList()
+
+            item {
+                PieChartView(
+                    data = categoryData.map { it.first to it.second },
+                    categories = categories,
+                    onSegmentClick = { label, amount ->
+                        val category = categories.find { it.name == label }
+                        selectedCategoryInfo = if (category != null) Pair(category, amount) else null
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
+            // Mostrar transacciones agrupadas por categoría
+            groupedTransactionsForChart.forEach { (categoryName, _, _) ->
+                val category = categories.find { it.name == categoryName }
+                val transactionsForCategory = filteredTransactions.filter { it.category == category }
+
+                if (transactionsForCategory.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = category?.displayName ?: categoryName,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    items(transactionsForCategory) { transaction ->
+                        TransactionItem(
+                            transaction = transaction,
+                            viewModel = viewModel,
+                            onDelete = {
+                                viewModel.deleteTransaction(transaction.id)
+                            }
+                        )
+                    }
+                }
+            }
+        } else if (chartType == ChartType.INCOME_EXPENSES) {
+
+            val incomeTransactions = filteredTransactions.filter { it.amount > 0 }
+            val expenseTransactions = filteredTransactions.filter { it.amount < 0 }
+
+            // Resumen global de transacciones
             item {
                 Text(
                     text = "Resumen Global de Transacciones",
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
+            // Gráfico de ingresos vs gastos
             item {
-                PieChartView(
-                    data = groupedTransactionsForChart.map { (category, totalAmount) ->
-                        category to totalAmount
-                    },
-                    categories = Category.values().toList(), // Pasamos todas las categorías
-                    onSegmentClick = { categoryName, amount ->
-                        val category = Category.values().find { it.name == categoryName }
-                        if (category != null) {
-                            selectedCategoryInfo = Pair(category, amount)
+                val totalIncome = remember(filteredTransactions) {
+                    filteredTransactions.filter { it.amount > 0 }.sumOf { it.amount }
+                }
+                val totalExpenses = remember(filteredTransactions) {
+                    filteredTransactions.filter { it.amount < 0 }.sumOf { it.amount.absoluteValue }
+                }
+                IncomeVsExpensesChart(
+                    income = totalIncome,
+                    expenses = totalExpenses,
+                    onSegmentClick = { label, amount ->
+                        selectedCategoryInfo = when (label) {
+                            "Ingresos" -> Pair("Ingresos", amount)
+                            "Gastos" -> Pair("Gastos", amount)
+                            else -> {
+                                val category = Category.values().find { it.name == label }
+                                if (category != null) Pair(category, amount) else null
+                            }
                         }
                     },
                     modifier = Modifier
@@ -191,31 +289,29 @@ fun AllAccountsTransactions(
                 )
             }
 
-            // Nueva sección para mostrar la lista de transacciones
-            if (filteredTransactions.isNotEmpty()) {
+            // Mostrar ingresos
+            if (incomeTransactions.isNotEmpty()) {
                 item {
                     Text(
-                        text = "Lista de Transacciones",
+                        text = "Ingresos",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(vertical = 16.dp, horizontal = 16.dp)
                     )
                 }
-                items(filteredTransactions) { transaction ->
+                items(incomeTransactions) { transaction ->
                     TransactionItem(
                         transaction = transaction,
                         viewModel = viewModel,
                         onDelete = {
-                            // Lógica para eliminar la transacción
                             viewModel.deleteTransaction(transaction.id)
                         }
                     )
                 }
-
             } else {
                 item {
                     Text(
-                        text = "No hay transacciones registradas.",
+                        text = "No hay ingresos registrados.",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(vertical = 16.dp, horizontal = 16.dp),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -223,14 +319,34 @@ fun AllAccountsTransactions(
                 }
             }
 
-        } else {
-            item {
-                Text(
-                    text = "No hay transacciones globales registradas.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(vertical = 16.dp, horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
+            // Mostrar gastos
+            if (expenseTransactions.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Gastos",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(vertical = 16.dp, horizontal = 16.dp)
+                    )
+                }
+                items(expenseTransactions) { transaction ->
+                    TransactionItem(
+                        transaction = transaction,
+                        viewModel = viewModel,
+                        onDelete = {
+                            viewModel.deleteTransaction(transaction.id)
+                        }
+                    )
+                }
+            } else {
+                item {
+                    Text(
+                        text = "No hay gastos registrados.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 16.dp, horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
             }
         }
 
@@ -238,13 +354,17 @@ fun AllAccountsTransactions(
 
     // Mostrar el diálogo con la información del segmento seleccionado
     if (selectedCategoryInfo != null) {
-        val (category, amount) = selectedCategoryInfo!!
+        val (labelOrCategory, amount) = selectedCategoryInfo!!
         AlertDialog(
             onDismissRequest = { selectedCategoryInfo = null },
-            title = { Text("Detalles de la Categoría") },
+            title = { Text("Detalles") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Categoría: ${category.displayName}") // Usar displayName
+                    if (labelOrCategory is Category) {
+                        Text(text = "Categoría: ${labelOrCategory.displayName}")
+                    } else {
+                        Text(text = "Etiqueta: $labelOrCategory")
+                    }
                     Text(text = "Cantidad: ${formatCurrency(amount)}")
                 }
             },
@@ -313,6 +433,60 @@ fun PieChartView(
     )
 }
 
+@Composable
+fun IncomeVsExpensesChart(
+    income: Double,
+    expenses: Double,
+    onSegmentClick: (String, Double) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        factory = { context ->
+            PieChart(context).apply {
+                description.isEnabled = false
+                isDrawHoleEnabled = true
+                setEntryLabelColor(Color.BLACK)
+                setUsePercentValues(false)
+                legend.isEnabled = false
+                animateY(1000)
+                setDrawEntryLabels(false)
+                setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+                    override fun onValueSelected(e: Entry?, h: Highlight?) {
+                        if (e is PieEntry) {
+                            val label = e.label
+                            val amount = e.value.toDouble()
+                            onSegmentClick(label, amount)
+                        }
+                    }
+
+                    override fun onNothingSelected() {}
+                })
+            }
+        },
+        update = { chart ->
+            val entries = listOf(
+                PieEntry(income.toFloat(), "Ingresos"),
+                PieEntry(expenses.toFloat(), "Gastos")
+            )
+            val colors = listOf(
+                Color.GREEN,
+                Color.RED
+            )
+
+            val dataSet = PieDataSet(entries, "").apply {
+                this.colors = colors
+                valueTextSize = 0f
+                sliceSpace = 3f
+                selectionShift = 5f
+            }
+            val pieData = PieData(dataSet)
+            chart.data = pieData
+            chart.invalidate()
+        },
+        modifier = modifier
+    )
+}
+
 private fun isSameDay(date1: Date, date2: Date): Boolean {
     val cal1 = Calendar.getInstance().apply { time = date1 }
     val cal2 = Calendar.getInstance().apply { time = date2 }
@@ -343,4 +517,9 @@ private fun isSameYear(date1: Date, date2: Date): Boolean {
 private fun formatDate(date: Date): String {
     val formatter = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
     return formatter.format(date)
+}
+
+enum class ChartType {
+    CATEGORIES, // Gráfico actual por categorías
+    INCOME_EXPENSES // Gráfico de ingresos vs. gastos
 }

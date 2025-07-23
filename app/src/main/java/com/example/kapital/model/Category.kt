@@ -10,7 +10,7 @@ enum class Category(
     val iconRes: Int
 ) {
     // Categorías de Ingresos
-    SALARY("Salario", true, Color.Green, R.drawable.ic_salary),
+    SALARY("Salario", true, Color(0xFF2ECC71), R.drawable.ic_salary), // Verde esmeralda
     INVESTMENT("Inversión", true, Color(0xFF6C3483), R.drawable.ic_investment), // Morado oscuro
     GIFT_INCOME("Regalo", true, Color(0xFFFFD700), R.drawable.ic_gift),         // Dorado
     INTEREST("Interés", true, Color(0xFF1E90FF), R.drawable.ic_interest),       // Azul brillante
